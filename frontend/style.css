@@ -226,6 +226,25 @@ header h1 {
     60%, 100% { content: '...'; }
 }
 
+#audio-level {
+    height: 4px;
+    background: var(--bg-card);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+#audio-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.1s ease;
+}
+
+#audio-bar.active {
+    background: var(--success);
+}
+
 #chat-input-area {
     display: flex;
     flex-direction: column;

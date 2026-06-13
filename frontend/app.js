@@ -4,12 +4,12 @@ class VisualAssistant {
         this.isCameraOn = false;
         this.isListening = false;
         this.isProcessing = false;
-        this.frameInterval = null;
-        this.lastFrameTime = 0;
-        this.frameCount = 0;
         this.recognition = null;
         this.recognizedText = '';
         this.isSpeaking = false;
+        this.conversationHistory = [];
+        this.facingMode = 'user';
+        this.lastFrameCapture = 0;
 
         this.elements = {
             video: document.getElementById('camera-preview'),
@@ -19,11 +19,16 @@ class VisualAssistant {
             btnCamera: document.getElementById('btn-toggle-camera'),
             cameraIcon: document.getElementById('camera-icon'),
             cameraText: document.getElementById('camera-text'),
+            btnSwitch: document.getElementById('btn-switch-camera'),
+            btnSnapshot: document.getElementById('btn-snapshot'),
             btnPtt: document.getElementById('btn-ptt'),
             pttIcon: document.getElementById('ptt-icon'),
             pttText: document.getElementById('ptt-text'),
             textInput: document.getElementById('text-input'),
             btnSend: document.getElementById('btn-send'),
+            btnClear: document.getElementById('btn-clear'),
+            audioLevel: document.getElementById('audio-level'),
+            audioBar: document.getElementById('audio-bar'),
             chatMessages: document.getElementById('chat-messages'),
             debugFps: document.getElementById('debug-fps'),
             debugApi: document.getElementById('debug-api'),
@@ -88,17 +93,22 @@ class VisualAssistant {
 
     setupEventListeners() {
         this.elements.btnCamera.addEventListener('click', () => this.toggleCamera());
+        this.elements.btnSwitch.addEventListener('click', () => this.switchCamera());
+        this.elements.btnSnapshot.addEventListener('click', () => this.captureSnapshot());
+
         this.elements.btnPtt.addEventListener('mousedown', () => this.startListening());
         this.elements.btnPtt.addEventListener('mouseup', () => this.stopListening());
         this.elements.btnPtt.addEventListener('touchstart', (e) => { e.preventDefault(); this.startListening(); });
         this.elements.btnPtt.addEventListener('touchend', (e) => { e.preventDefault(); this.stopListening(); });
+
         this.elements.btnSend.addEventListener('click', () => this.sendTextMessage());
+        this.elements.btnClear.addEventListener('click', () => this.clearConversation());
         this.elements.textInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') this.sendTextMessage();
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === ' ' && e.target === document.body && this.isCameraOn) {
+            if (e.key === ' ' && e.target === document.body && this.isCameraOn && !this.isProcessing) {
                 e.preventDefault();
                 this.startListening();
             }
@@ -154,10 +164,15 @@ class VisualAssistant {
 
     async startCamera() {
         try {
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            const constraints = {
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: this.facingMode,
+                },
                 audio: false,
-            });
+            };
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.elements.video.srcObject = this.stream;
             await this.elements.video.play();
             this.elements.video.classList.add('active');
@@ -165,7 +180,10 @@ class VisualAssistant {
             this.isCameraOn = true;
             this.elements.cameraText.textContent = '关闭摄像头';
             this.elements.cameraIcon.textContent = '📷';
-            this.startFrameCapture();
+            this.elements.btnSwitch.style.display = 'inline-flex';
+            this.elements.btnSnapshot.style.display = 'inline-flex';
+            this.captureFrame();
+            this.updateDebugFps();
         } catch (err) {
             if (err.name === 'NotAllowedError') {
                 this.addSystemMessage('请允许摄像头访问权限');
@@ -187,20 +205,15 @@ class VisualAssistant {
         this.elements.placeholder.style.display = 'flex';
         this.isCameraOn = false;
         this.elements.cameraText.textContent = '开启摄像头';
-        this.stopFrameCapture();
+        this.elements.btnSwitch.style.display = 'none';
+        this.elements.btnSnapshot.style.display = 'none';
+        this.setDebug('fps', '0');
     }
 
-    startFrameCapture() {
-        const FPS = 1;
-        this.frameInterval = setInterval(() => this.captureFrame(), 1000 / FPS);
-        this.frameCount = 0;
-    }
-
-    stopFrameCapture() {
-        if (this.frameInterval) {
-            clearInterval(this.frameInterval);
-            this.frameInterval = null;
-        }
+    async switchCamera() {
+        this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
+        this.stopCamera();
+        await this.startCamera();
     }
 
     captureFrame() {
@@ -216,17 +229,28 @@ class VisualAssistant {
         canvas.width = Math.round(w);
         canvas.height = Math.round(h);
         const ctx = canvas.getContext('2d');
+        if (this.facingMode === 'user') {
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+        }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        this.lastFrameCapture = Date.now();
+    }
 
-        this.frameCount++;
-        this.setDebug('fps', `${this.frameCount}fps`);
-        this.lastFrameTime = Date.now();
+    captureSnapshot() {
+        this.captureFrame();
+        this.addSystemMessage('已拍照');
     }
 
     getFrameBase64() {
+        this.captureFrame();
         const canvas = this.elements.canvas;
         if (!canvas.width) return null;
         return canvas.toDataURL('image/jpeg', 0.6);
+    }
+
+    updateDebugFps() {
+        this.setDebug('fps', '待命');
     }
 
     addMessage(role, text) {
@@ -343,13 +367,21 @@ class VisualAssistant {
     async sendToAI(text, image) {
         this.isProcessing = true;
         this.setStatus('thinking');
+
+        const history = this.conversationHistory.slice(-10).map(msg => ({
+            role: msg.role,
+            content: msg.role === 'user'
+                ? [{ type: 'text', text: msg.text }]
+                : msg.text,
+        }));
+
         this.addThinkingMessage();
 
         try {
             const resp = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, image }),
+                body: JSON.stringify({ text, image, conversation_history: history }),
             });
 
             if (!resp.ok) {
@@ -359,6 +391,10 @@ class VisualAssistant {
 
             const data = await resp.json();
             this.removeThinkingMessage();
+
+            this.conversationHistory.push({ role: 'user', text });
+            this.conversationHistory.push({ role: 'assistant', text: data.reply });
+
             this.addMessage('assistant', data.reply);
             this.speakText(data.reply);
         } catch (err) {
@@ -368,6 +404,12 @@ class VisualAssistant {
             this.isProcessing = false;
             this.setStatus('online');
         }
+    }
+
+    clearConversation() {
+        this.conversationHistory = [];
+        this.elements.chatMessages.querySelectorAll('.message:not(.system)').forEach(el => el.remove());
+        this.addSystemMessage('对话已清空');
     }
 
     speakText(text) {
