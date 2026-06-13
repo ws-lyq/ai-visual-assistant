@@ -78,6 +78,14 @@ def compress_image(base64_str: str) -> str:
         return base64_str
 
 
+def normalize_history(msg: dict) -> dict:
+    role = msg.get("role", "user")
+    content = msg.get("content", "")
+    if role == "user" and isinstance(content, str):
+        return {"role": role, "content": [{"type": "text", "text": content}]}
+    return msg
+
+
 def build_messages(req: ChatRequest) -> list[dict]:
     system_prompt = {
         "role": "system",
@@ -89,7 +97,7 @@ def build_messages(req: ChatRequest) -> list[dict]:
         ),
     }
 
-    history = (req.conversation_history or [])[-10:]
+    history = [normalize_history(m) for m in (req.conversation_history or [])][-10:]
 
     user_content: list[dict] = [{"type": "text", "text": req.text}]
     if req.image:
