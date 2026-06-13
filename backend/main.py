@@ -12,9 +12,9 @@ from PIL import Image
 from pydantic import BaseModel
 
 from config import (
-    DEEPSEEK_API_KEY,
-    DEEPSEEK_BASE_URL,
-    DEEPSEEK_MODEL,
+    AI_API_KEY,
+    AI_BASE_URL,
+    AI_MODEL,
     HOST,
     JPEG_QUALITY,
     MAX_IMAGE_HEIGHT,
@@ -106,12 +106,12 @@ def build_messages(req: ChatRequest) -> list[dict]:
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
-    if not DEEPSEEK_API_KEY:
-        raise HTTPException(status_code=500, detail="DEEPSEEK_API_KEY not configured")
+    if not AI_API_KEY:
+        raise HTTPException(status_code=500, detail="AI_API_KEY not configured in .env")
 
     messages = build_messages(req)
     payload = {
-        "model": DEEPSEEK_MODEL,
+        "model": AI_MODEL,
         "messages": messages,
         "max_tokens": 300,
         "temperature": 0.7,
@@ -120,9 +120,9 @@ async def chat(req: ChatRequest):
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{DEEPSEEK_BASE_URL}/v1/chat/completions",
+                f"{AI_BASE_URL}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                    "Authorization": f"Bearer {AI_API_KEY}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -133,7 +133,7 @@ async def chat(req: ChatRequest):
             logger.info("AI reply (%d chars): %s", len(reply), reply[:100])
             return ChatResponse(reply=reply)
     except httpx.HTTPStatusError as e:
-        logger.error("DeepSeek API error: %s %s", e.response.status_code, e.response.text)
+        logger.error("AI API error: %s %s", e.response.status_code, e.response.text)
         raise HTTPException(status_code=e.response.status_code, detail="AI service error")
     except httpx.RequestError as e:
         logger.error("Network error: %s", e)
@@ -147,8 +147,8 @@ async def chat(req: ChatRequest):
 async def health():
     return {
         "status": "ok",
-        "model": DEEPSEEK_MODEL,
-        "api_configured": bool(DEEPSEEK_API_KEY),
+        "model": AI_MODEL,
+        "api_configured": bool(AI_API_KEY),
     }
 
 
