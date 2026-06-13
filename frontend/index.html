@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 视觉对话助手</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>AI 视觉对话助手</h1>
+            <span id="status-badge" class="status-offline">未连接</span>
+        </header>
+
+        <main id="main-layout">
+            <section id="camera-section">
+                <div id="video-container">
+                    <video id="camera-preview" autoplay muted playsinline></video>
+                    <canvas id="frame-canvas" style="display:none"></canvas>
+                    <div id="camera-placeholder">
+                        <span>📷</span>
+                        <p>摄像头未启动</p>
+                    </div>
+                </div>
+                <div id="camera-controls">
+                    <button id="btn-toggle-camera" class="btn btn-secondary">
+                        <span id="camera-icon">📷</span>
+                        <span id="camera-text">开启摄像头</span>
+                    </button>
+                </div>
+            </section>
+
+            <section id="chat-section">
+                <div id="chat-messages">
+                    <div class="message system">
+                        <div class="msg-content">欢迎使用 AI 视觉对话助手！点击"开启摄像头"并按下"按住说话"按钮开始对话。</div>
+                    </div>
+                </div>
+
+                <div id="chat-input-area">
+                    <button id="btn-ptt" class="btn btn-primary" disabled>
+                        <span id="ptt-icon">🎤</span>
+                        <span id="ptt-text">按住说话</span>
+                    </button>
+                    <div id="input-text-row">
+                        <input type="text" id="text-input" placeholder="或输入文本..." disabled>
+                        <button id="btn-send" class="btn btn-secondary" disabled>发送</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="debug-bar">
+            <span id="debug-fps">帧: -</span>
+            <span id="debug-api">API: -</span>
+            <span id="debug-stt">语音: -</span>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
