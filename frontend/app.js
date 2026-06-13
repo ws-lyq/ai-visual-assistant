@@ -37,7 +37,19 @@ class VisualAssistant {
 
         this.setupEventListeners();
         this.initSpeechRecognition();
+        this.initTTS();
         this.checkApiHealth();
+    }
+
+    initTTS() {
+        if (!window.speechSynthesis) return;
+        const voices = speechSynthesis.getVoices();
+        if (voices.length === 0) {
+            speechSynthesis.addEventListener('voiceschanged', () => {
+                speechSynthesis.getVoices();
+            }, { once: true });
+        }
+        speechSynthesis.speak(new SpeechSynthesisUtterance(''));
     }
 
     initSpeechRecognition() {
@@ -418,17 +430,22 @@ class VisualAssistant {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'zh-CN';
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
+        utterance.rate = 1.1;
         utterance.volume = 1.0;
 
-        const voices = speechSynthesis.getVoices();
-        const zhVoice = voices.find(v => v.lang.startsWith('zh'));
-        if (zhVoice) utterance.voice = zhVoice;
-
         this.isSpeaking = true;
-        utterance.onend = () => { this.isSpeaking = false; };
-        utterance.onerror = () => { this.isSpeaking = false; };
+        this.setDebug('stt', '🔊 播报中...');
+        utterance.onstart = () => {
+            this.setDebug('stt', '🔊 播报中...');
+        };
+        utterance.onend = () => {
+            this.isSpeaking = false;
+            this.setDebug('stt', '空闲');
+        };
+        utterance.onerror = (e) => {
+            this.isSpeaking = false;
+            this.setDebug('stt', `TTS: ${e.error}`);
+        };
 
         speechSynthesis.speak(utterance);
     }
