@@ -78,15 +78,16 @@ class VisualAssistant {
         };
 
         this.recognition.onend = () => {
+            const text = this.recognizedText;
+            this.recognizedText = '';
+            this.setDebug('stt', '空闲');
             if (this.isListening) {
                 this.cleanupListening();
-                if (this.recognizedText.trim()) {
-                    this.addMessage('user', this.recognizedText);
-                    const image = this.getFrameBase64();
-                    this.sendToAI(this.recognizedText, image);
-                }
-                this.recognizedText = '';
-                this.setDebug('stt', '空闲');
+            }
+            if (text.trim()) {
+                this.addMessage('user', text);
+                const image = this.getFrameBase64();
+                this.sendToAI(text, image);
             }
         };
     }
