@@ -40,11 +40,19 @@ class VisualAssistant {
 
     initTTS() {
         if (!window.speechSynthesis) return;
+        this.ttsVoice = null;
+        const pickVoice = () => {
+            const all = speechSynthesis.getVoices();
+            const zh = all.filter(v => v.lang.startsWith('zh'));
+            const preferred = zh.find(v => /Microsoft\s+(Yaoyao|Huihui|Xiaoxiao|Xiaoyi|Yunxi|Yunyang|Hanhan)/i.test(v.name));
+            if (preferred) { this.ttsVoice = preferred; return; }
+            const google = zh.find(v => v.name.includes('Google'));
+            if (google) { this.ttsVoice = google; return; }
+            if (zh.length) { this.ttsVoice = zh[0]; }
+        };
         const voices = speechSynthesis.getVoices();
-        if (voices.length === 0) {
-            speechSynthesis.addEventListener('voiceschanged', () => {
-                speechSynthesis.getVoices();
-            }, { once: true });
+        if (voices.length) { pickVoice(); } else {
+            speechSynthesis.addEventListener('voiceschanged', pickVoice, { once: true });
         }
         speechSynthesis.speak(new SpeechSynthesisUtterance(''));
     }
@@ -129,6 +137,8 @@ class VisualAssistant {
     }
 
     hangup() {
+        window.speechSynthesis.cancel();
+        this.isSpeaking = false;
         this.stopVoice();
         this.stopCamera();
         this.stopTimer();
@@ -331,8 +341,9 @@ class VisualAssistant {
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'zh-CN';
-        utterance.rate = 1.1;
+        utterance.rate = 1.3;
         utterance.volume = 1.0;
+        if (this.ttsVoice) utterance.voice = this.ttsVoice;
 
         this.isSpeaking = true;
         this.setPipStatus('正在说话...');
