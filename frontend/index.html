@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 视觉视频通话</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="lobby-view">
+        <div class="lobby-content">
+            <div class="lobby-avatar">
+                <img src="character.jpg" alt="AI">
+            </div>
+            <h1>AI 视觉助手</h1>
+            <p>与 AI 进行视频通话 · 实时视觉理解</p>
+            <button id="btn-call" class="btn-call">
+                <span class="btn-call-icon">📹</span>
+                视频通话
+            </button>
+        </div>
+    </div>
+
+    <div id="call-view" style="display:none">
+        <video id="camera-preview" autoplay muted playsinline></video>
+        <canvas id="frame-canvas" style="display:none"></canvas>
+
+        <div id="pip">
+            <div id="pip-wave"></div>
+            <img src="character.jpg" alt="AI">
+            <div id="pip-status">准备中</div>
+        </div>
+
+        <div id="audio-level" style="display:none">
+            <div id="audio-bar"></div>
+        </div>
+
+        <div id="call-timer" style="display:none">00:00</div>
+
+        <div id="call-controls">
+            <button id="btn-toggle-mic" class="ctrl-btn" title="麦克风">
+                <span id="mic-icon">🎤</span>
+                <span class="ctrl-label">麦克风</span>
+            </button>
+            <button id="btn-toggle-camera" class="ctrl-btn" title="摄像头">
+                <span id="cam-icon">📷</span>
+                <span class="ctrl-label">摄像头</span>
+            </button>
+            <button id="btn-hangup" class="ctrl-btn ctrl-hangup" title="挂断">
+                <span id="hangup-icon">📞</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

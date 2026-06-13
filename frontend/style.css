@@ -1,0 +1,338 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #000;
+    color: #fff;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+}
+
+/* ─── Lobby ─── */
+#lobby-view {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: linear-gradient(135deg, #0f0f13 0%, #1a1a2e 50%, #0f0f13 100%);
+}
+
+.lobby-content {
+    text-align: center;
+    animation: lobbyFadeIn 0.8s ease;
+}
+
+@keyframes lobbyFadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.lobby-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin: 0 auto 24px;
+    border: 3px solid rgba(91, 141, 238, 0.6);
+    box-shadow: 0 0 40px rgba(91, 141, 238, 0.2);
+    transition: box-shadow 0.3s;
+}
+
+.lobby-avatar:hover {
+    box-shadow: 0 0 60px rgba(91, 141, 238, 0.4);
+}
+
+.lobby-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.lobby-content h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.lobby-content p {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 40px;
+}
+
+.btn-call {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 48px;
+    font-size: 18px;
+    font-weight: 600;
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #5b8dee, #4a7ae0);
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 20px rgba(91, 141, 238, 0.3);
+}
+
+.btn-call:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(91, 141, 238, 0.5);
+}
+
+.btn-call:active {
+    transform: translateY(0);
+}
+
+.btn-call-icon {
+    font-size: 22px;
+}
+
+/* ─── Call View ─── */
+#call-view {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+}
+
+#camera-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* ─── PiP (Picture-in-Picture) ─── */
+#pip {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 160px;
+    height: 120px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    z-index: 10;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#pip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#pip-wave {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 10px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#pip-wave.speaking {
+    animation: speakRipple 1.2s ease-in-out infinite;
+    border: 2px solid rgba(91, 141, 238, 0.6);
+}
+
+#pip-wave.thinking {
+    animation: thinkPulse 0.8s ease-in-out infinite;
+    border: 2px solid rgba(251, 191, 36, 0.6);
+}
+
+@keyframes speakRipple {
+    0%, 100% { box-shadow: 0 0 8px rgba(91, 141, 238, 0.3); }
+    50%      { box-shadow: 0 0 20px rgba(91, 141, 238, 0.6); }
+}
+
+@keyframes thinkPulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+}
+
+#pip-status {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.65);
+    font-size: 11px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
+    z-index: 2;
+    backdrop-filter: blur(4px);
+}
+
+/* ─── Audio Level ─── */
+#audio-level {
+    position: absolute;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 180px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    z-index: 5;
+}
+
+#audio-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #4ade80, #22d3ee);
+    border-radius: 2px;
+    transition: width 0.1s ease;
+}
+
+/* ─── Call Timer ─── */
+#call-timer {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    font-variant-numeric: tabular-nums;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 4px 14px;
+    border-radius: 20px;
+    backdrop-filter: blur(4px);
+    z-index: 5;
+}
+
+/* ─── Call Controls ─── */
+#call-controls {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    z-index: 10;
+}
+
+.ctrl-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.ctrl-label {
+    position: absolute;
+    bottom: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+    white-space: nowrap;
+}
+
+#btn-toggle-mic,
+#btn-toggle-camera {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 20px;
+}
+
+#btn-toggle-mic:hover,
+#btn-toggle-camera:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+#btn-toggle-mic.muted,
+#btn-toggle-camera.muted {
+    background: rgba(248, 113, 113, 0.25);
+    color: #f87171;
+}
+
+#btn-toggle-mic.muted::after,
+#btn-toggle-camera.muted::after {
+    content: '';
+    position: absolute;
+    width: 60%;
+    height: 2px;
+    background: #f87171;
+    transform: rotate(-45deg);
+    border-radius: 1px;
+}
+
+.ctrl-hangup {
+    width: 60px;
+    height: 60px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 24px;
+    box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+}
+
+.ctrl-hangup:hover {
+    background: #b91c1c;
+    transform: scale(1.05);
+}
+
+.ctrl-hangup:active {
+    transform: scale(0.95);
+}
+
+/* ─── Transitions ─── */
+#call-view {
+    animation: callFadeIn 0.4s ease;
+}
+
+@keyframes callFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 640px) {
+    .lobby-avatar {
+        width: 90px;
+        height: 90px;
+    }
+    .lobby-content h1 {
+        font-size: 22px;
+    }
+    .btn-call {
+        padding: 14px 36px;
+        font-size: 16px;
+    }
+    #pip {
+        width: 120px;
+        height: 90px;
+        top: 12px;
+        right: 12px;
+    }
+    .ctrl-btn {
+        width: 48px;
+        height: 48px;
+        font-size: 18px;
+    }
+    .ctrl-hangup {
+        width: 52px;
+        height: 52px;
+        font-size: 20px;
+    }
+    #call-controls {
+        gap: 18px;
+    }
+}

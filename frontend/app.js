@@ -1,0 +1,403 @@
+class VisualAssistant {
+    constructor() {
+        this.inCall = false;
+        this.stream = null;
+        this.isCameraOn = false;
+        this.isProcessing = false;
+        this.recognition = null;
+        this.isSpeaking = false;
+        this.isVoiceActive = false;
+        this.conversationHistory = [];
+        this.facingMode = 'user';
+
+        this.accumulatedText = '';
+        this.silenceTimer = null;
+        this.silenceTimeout = 1500;
+
+        this.timerInterval = null;
+        this.timerSeconds = 0;
+
+        this.elements = {
+            lobby: document.getElementById('lobby-view'),
+            call: document.getElementById('call-view'),
+            btnCall: document.getElementById('btn-call'),
+            video: document.getElementById('camera-preview'),
+            canvas: document.getElementById('frame-canvas'),
+            pipStatus: document.getElementById('pip-status'),
+            pipWave: document.getElementById('pip-wave'),
+            audioLevel: document.getElementById('audio-level'),
+            audioBar: document.getElementById('audio-bar'),
+            btnMic: document.getElementById('btn-toggle-mic'),
+            btnCam: document.getElementById('btn-toggle-camera'),
+            btnHangup: document.getElementById('btn-hangup'),
+            timer: document.getElementById('call-timer'),
+        };
+
+        this.initTTS();
+        this.initSpeechRecognition();
+        this.setupEventListeners();
+    }
+
+    initTTS() {
+        if (!window.speechSynthesis) return;
+        const voices = speechSynthesis.getVoices();
+        if (voices.length === 0) {
+            speechSynthesis.addEventListener('voiceschanged', () => {
+                speechSynthesis.getVoices();
+            }, { once: true });
+        }
+        speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+    }
+
+    initSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            this.setPipStatus('浏览器不支持语音识别');
+            this.elements.btnMic.style.display = 'none';
+            return;
+        }
+        this.recognition = new SpeechRecognition();
+        this.recognition.lang = 'zh-CN';
+        this.recognition.continuous = true;
+        this.recognition.interimResults = true;
+        this.recognition.maxAlternatives = 1;
+
+        this.recognition.onresult = (event) => {
+            let final = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                if (event.results[i].isFinal) {
+                    final += event.results[i][0].transcript;
+                }
+            }
+            if (final) {
+                this.accumulatedText += final;
+                if (this.isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    this.isSpeaking = false;
+                    this.setPipStatus('聆听中...');
+                    this.elements.pipWave.className = '';
+                }
+            }
+            this.resetSilenceTimer();
+        };
+
+        this.recognition.onerror = (event) => {
+            if (event.error === 'no-speech' || event.error === 'aborted') return;
+            if (event.error === 'not-allowed') {
+                this.setPipStatus('麦克风权限被拒绝');
+                this.isVoiceActive = false;
+                this.elements.btnMic.classList.add('muted');
+                return;
+            }
+            this.setPipStatus('语音识别错误');
+            if (this.isVoiceActive) {
+                this.isVoiceActive = false;
+                this.elements.btnMic.classList.add('muted');
+            }
+        };
+
+        this.recognition.onend = () => {
+            if (this.isVoiceActive && this.inCall) {
+                try {
+                    this.recognition.start();
+                } catch (e) {
+                    // ignore
+                }
+            }
+        };
+    }
+
+    setupEventListeners() {
+        this.elements.btnCall.addEventListener('click', () => this.startCall());
+        this.elements.btnMic.addEventListener('click', () => this.toggleMic());
+        this.elements.btnCam.addEventListener('click', () => this.toggleCamera());
+        this.elements.btnHangup.addEventListener('click', () => this.hangup());
+    }
+
+    // ─── Call Lifecycle ───
+
+    async startCall() {
+        await this.startCamera();
+        if (!this.isCameraOn) return;
+
+        this.inCall = true;
+        this.elements.lobby.style.display = 'none';
+        this.elements.call.style.display = 'block';
+
+        this.startVoice();
+        this.startTimer();
+    }
+
+    hangup() {
+        this.stopVoice();
+        this.stopCamera();
+        this.stopTimer();
+
+        this.inCall = false;
+        this.isProcessing = false;
+        this.isSpeaking = false;
+        this.conversationHistory = [];
+
+        this.elements.call.style.display = 'none';
+        this.elements.lobby.style.display = 'flex';
+        this.elements.pipWave.className = '';
+        this.setPipStatus('准备中');
+        this.elements.btnMic.classList.remove('muted');
+        this.elements.btnCam.classList.remove('muted');
+    }
+
+    // ─── Camera ───
+
+    async startCamera() {
+        try {
+            const constraints = {
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: this.facingMode,
+                },
+                audio: false,
+            };
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            this.elements.video.srcObject = this.stream;
+            await this.elements.video.play();
+            this.isCameraOn = true;
+        } catch (err) {
+            if (err.name === 'NotAllowedError') {
+                this.setPipStatus('请允许摄像头权限');
+            } else if (err.name === 'NotFoundError') {
+                this.setPipStatus('未检测到摄像头');
+            } else {
+                this.setPipStatus('摄像头启动失败');
+            }
+        }
+    }
+
+    stopCamera() {
+        if (this.stream) {
+            this.stream.getTracks().forEach(t => t.stop());
+            this.stream = null;
+        }
+        this.elements.video.srcObject = null;
+        this.isCameraOn = false;
+    }
+
+    toggleCamera() {
+        if (this.isCameraOn) {
+            this.stopCamera();
+            this.elements.btnCam.classList.add('muted');
+        } else {
+            this.startCamera();
+            this.elements.btnCam.classList.remove('muted');
+        }
+    }
+
+    captureFrame() {
+        const video = this.elements.video;
+        const canvas = this.elements.canvas;
+        if (!video.videoWidth) return;
+
+        const maxW = 640, maxH = 480;
+        let w = video.videoWidth, h = video.videoHeight;
+        if (w > maxW) { h = h * maxW / w; w = maxW; }
+        if (h > maxH) { w = w * maxH / h; h = maxH; }
+
+        canvas.width = Math.round(w);
+        canvas.height = Math.round(h);
+        const ctx = canvas.getContext('2d');
+        if (this.facingMode === 'user') {
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    }
+
+    getFrameBase64() {
+        this.captureFrame();
+        const canvas = this.elements.canvas;
+        if (!canvas.width) return null;
+        return canvas.toDataURL('image/jpeg', 0.6);
+    }
+
+    // ─── Microphone / Voice ───
+
+    toggleMic() {
+        if (this.isVoiceActive) {
+            this.stopVoice();
+            this.elements.btnMic.classList.add('muted');
+        } else {
+            this.startVoice();
+            this.elements.btnMic.classList.remove('muted');
+        }
+    }
+
+    startVoice() {
+        if (!this.recognition) return;
+        this.isVoiceActive = true;
+        this.accumulatedText = '';
+        this.setPipStatus('聆听中...');
+        this.elements.pipWave.className = '';
+        this.elements.audioLevel.style.display = 'block';
+        try {
+            this.recognition.start();
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    stopVoice() {
+        this.isVoiceActive = false;
+        this.clearSilenceTimer();
+        this.accumulatedText = '';
+        this.setPipStatus('麦克风已关闭');
+        this.elements.pipWave.className = '';
+        this.elements.audioLevel.style.display = 'none';
+        try {
+            this.recognition.stop();
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    resetSilenceTimer() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+        }
+        this.silenceTimer = setTimeout(() => {
+            this.silenceTimer = null;
+            this.submitVoiceText();
+        }, this.silenceTimeout);
+    }
+
+    clearSilenceTimer() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
+    }
+
+    submitVoiceText() {
+        const text = this.accumulatedText.trim();
+        this.accumulatedText = '';
+        if (!text || !this.isVoiceActive || !this.inCall || this.isProcessing) return;
+        this.sendToAI(text);
+    }
+
+    // ─── AI Chat ───
+
+    async sendToAI(text) {
+        this.isProcessing = true;
+        this.setPipStatus('思考中...');
+        this.elements.pipWave.className = 'thinking';
+
+        const history = this.conversationHistory.slice(-10).map(msg => ({
+            role: msg.role,
+            content: msg.role === 'user'
+                ? [{ type: 'text', text: msg.text }]
+                : msg.text,
+        }));
+
+        const image = this.getFrameBase64();
+
+        try {
+            const resp = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, image, conversation_history: history }),
+            });
+
+            if (!resp.ok) {
+                const errData = await resp.json().catch(() => ({}));
+                throw new Error(errData.detail || `HTTP ${resp.status}`);
+            }
+
+            const data = await resp.json();
+
+            this.conversationHistory.push({ role: 'user', text });
+            this.conversationHistory.push({ role: 'assistant', text: data.reply });
+
+            this.speakText(data.reply);
+        } catch (err) {
+            this.setPipStatus('请求失败，请重试');
+            this.elements.pipWave.className = '';
+        } finally {
+            this.isProcessing = false;
+        }
+    }
+
+    speakText(text) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 1.1;
+        utterance.volume = 1.0;
+
+        this.isSpeaking = true;
+        this.setPipStatus('正在说话...');
+        this.elements.pipWave.className = 'speaking';
+        this.elements.audioLevel.style.display = 'none';
+
+        utterance.onend = () => {
+            this.isSpeaking = false;
+            this.elements.pipWave.className = '';
+            if (this.isVoiceActive) {
+                this.setPipStatus('聆听中...');
+                this.elements.audioLevel.style.display = 'block';
+            } else {
+                this.setPipStatus('麦克风已关闭');
+            }
+        };
+        utterance.onerror = () => {
+            this.isSpeaking = false;
+            this.elements.pipWave.className = '';
+            if (this.isVoiceActive) {
+                this.setPipStatus('聆听中...');
+                this.elements.audioLevel.style.display = 'block';
+            } else {
+                this.setPipStatus('麦克风已关闭');
+            }
+        };
+
+        speechSynthesis.speak(utterance);
+    }
+
+    // ─── Timer ───
+
+    startTimer() {
+        this.timerSeconds = 0;
+        this.elements.timer.style.display = 'block';
+        this.updateTimerDisplay();
+        this.timerInterval = setInterval(() => {
+            this.timerSeconds++;
+            this.updateTimerDisplay();
+        }, 1000);
+    }
+
+    stopTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        this.elements.timer.style.display = 'none';
+    }
+
+    updateTimerDisplay() {
+        const m = String(Math.floor(this.timerSeconds / 60)).padStart(2, '0');
+        const s = String(this.timerSeconds % 60).padStart(2, '0');
+        this.elements.timer.textContent = `${m}:${s}`;
+    }
+
+    // ─── UI Helpers ───
+
+    setPipStatus(text) {
+        if (this.elements.pipStatus) {
+            this.elements.pipStatus.textContent = text;
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    new VisualAssistant();
+});
