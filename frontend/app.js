@@ -11,6 +11,11 @@ class VisualAssistant {
         this.facingMode = 'user';
         this.lastFrameCapture = 0;
 
+        this.isVoiceActive = false;
+        this.accumulatedText = '';
+        this.silenceTimer = null;
+        this.silenceTimeout = 1500;
+
         this.elements = {
             video: document.getElementById('camera-preview'),
             canvas: document.getElementById('frame-canvas'),
@@ -61,45 +66,45 @@ class VisualAssistant {
         }
         this.recognition = new SpeechRecognition();
         this.recognition.lang = 'zh-CN';
-        this.recognition.continuous = false;
+        this.recognition.continuous = true;
         this.recognition.interimResults = true;
         this.recognition.maxAlternatives = 1;
 
         this.recognition.onresult = (event) => {
-            let interim = '';
             let final = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
-                const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
-                    final += transcript;
-                } else {
-                    interim += transcript;
+                    final += event.results[i][0].transcript;
                 }
             }
-            if (final) this.recognizedText += final;
-            if (interim) {
-                this.setDebug('stt', `识别中: ${interim}`);
+            if (final) {
+                this.accumulatedText += final;
+                if (this.isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    this.isSpeaking = false;
+                    this.setDebug('stt', '聆听中...');
+                }
             }
+            this.resetSilenceTimer();
         };
 
         this.recognition.onerror = (event) => {
             this.setDebug('stt', `错误: ${event.error}`);
-            if (event.error === 'no-speech') return;
+            if (event.error === 'no-speech' || event.error === 'aborted') return;
             this.addSystemMessage(`语音识别错误: ${event.error}`);
-            this.cleanupListening();
+            if (this.isVoiceActive) {
+                this.stopVoice();
+            }
         };
 
         this.recognition.onend = () => {
-            const text = this.recognizedText;
-            this.recognizedText = '';
             this.setDebug('stt', '空闲');
-            if (this.isListening) {
-                this.cleanupListening();
-            }
-            if (text.trim()) {
-                this.addMessage('user', text);
-                const image = this.getFrameBase64();
-                this.sendToAI(text, image);
+            if (this.isVoiceActive) {
+                try {
+                    this.recognition.start();
+                } catch (e) {
+                    // ignore restart errors
+                }
             }
         };
     }
@@ -109,10 +114,7 @@ class VisualAssistant {
         this.elements.btnSwitch.addEventListener('click', () => this.switchCamera());
         this.elements.btnSnapshot.addEventListener('click', () => this.captureSnapshot());
 
-        this.elements.btnPtt.addEventListener('mousedown', () => this.startListening());
-        this.elements.btnPtt.addEventListener('mouseup', () => this.stopListening());
-        this.elements.btnPtt.addEventListener('touchstart', (e) => { e.preventDefault(); this.startListening(); });
-        this.elements.btnPtt.addEventListener('touchend', (e) => { e.preventDefault(); this.stopListening(); });
+        this.elements.btnPtt.addEventListener('click', () => this.toggleVoice());
 
         this.elements.btnSend.addEventListener('click', () => this.sendTextMessage());
         this.elements.btnClear.addEventListener('click', () => this.clearConversation());
@@ -121,17 +123,102 @@ class VisualAssistant {
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === ' ' && e.target === document.body && this.isCameraOn && !this.isProcessing) {
+            if (e.key === ' ' && e.target === document.body && this.isCameraOn) {
                 e.preventDefault();
-                this.startListening();
+                this.toggleVoice();
             }
         });
-        document.addEventListener('keyup', (e) => {
-            if (e.key === ' ' && this.isListening) {
-                e.preventDefault();
-                this.stopListening();
-            }
-        });
+    }
+
+    toggleVoice() {
+        if (this.isProcessing) return;
+        if (this.isVoiceActive) {
+            this.stopVoice();
+        } else {
+            this.startVoice();
+        }
+    }
+
+    startVoice() {
+        if (!this.recognition) {
+            this.addSystemMessage('浏览器不支持语音识别');
+            return;
+        }
+        if (!this.isCameraOn) {
+            this.addSystemMessage('请先开启摄像头');
+            return;
+        }
+        if (this.isSpeaking) {
+            window.speechSynthesis.cancel();
+            this.isSpeaking = false;
+        }
+
+        this.isVoiceActive = true;
+        this.accumulatedText = '';
+        this.setVoiceUI(true);
+        this.setDebug('stt', '聆听中...');
+        this.elements.audioLevel.style.display = 'block';
+        this.elements.audioBar.classList.add('active');
+
+        try {
+            this.recognition.start();
+        } catch (e) {
+            // already started, ignore
+        }
+    }
+
+    stopVoice() {
+        this.isVoiceActive = false;
+        this.clearSilenceTimer();
+        this.accumulatedText = '';
+        this.setVoiceUI(false);
+        this.setDebug('stt', '空闲');
+        this.elements.audioLevel.style.display = 'none';
+        this.elements.audioBar.classList.remove('active');
+
+        try {
+            this.recognition.stop();
+        } catch (e) {
+            // ignore
+        }
+    }
+
+    setVoiceUI(active) {
+        if (active) {
+            this.elements.btnPtt.classList.add('voice-active');
+            this.elements.pttText.textContent = '停止语音对话';
+            this.elements.pttIcon.textContent = '🎙️';
+        } else {
+            this.elements.btnPtt.classList.remove('voice-active');
+            this.elements.pttText.textContent = '开始语音对话';
+            this.elements.pttIcon.textContent = '🎤';
+        }
+    }
+
+    resetSilenceTimer() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+        }
+        this.silenceTimer = setTimeout(() => {
+            this.silenceTimer = null;
+            this.submitVoiceText();
+        }, this.silenceTimeout);
+    }
+
+    clearSilenceTimer() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
+    }
+
+    submitVoiceText() {
+        const text = this.accumulatedText.trim();
+        this.accumulatedText = '';
+        if (!text || !this.isVoiceActive || this.isProcessing) return;
+        this.addMessage('user', text);
+        const image = this.getFrameBase64();
+        this.sendToAI(text, image);
     }
 
     setStatus(state) {
@@ -212,6 +299,9 @@ class VisualAssistant {
         if (this.stream) {
             this.stream.getTracks().forEach(t => t.stop());
             this.stream = null;
+        }
+        if (this.isVoiceActive) {
+            this.stopVoice();
         }
         this.elements.video.classList.remove('active');
         this.elements.video.srcObject = null;
@@ -320,53 +410,6 @@ class VisualAssistant {
         this.elements.chatMessages.scrollTop = this.elements.chatMessages.scrollHeight;
     }
 
-    startListening() {
-        if (this.isListening || this.isProcessing || !this.isCameraOn) return;
-        if (!this.recognition) {
-            this.addSystemMessage('浏览器不支持语音识别');
-            return;
-        }
-        if (this.isSpeaking) {
-            window.speechSynthesis.cancel();
-            this.isSpeaking = false;
-        }
-        this.isListening = true;
-        this.recognizedText = '';
-        this.elements.btnPtt.classList.add('listening');
-        this.elements.pttText.textContent = '松开结束';
-        this.elements.pttIcon.textContent = '🔴';
-        this.setDebug('stt', '录音中...');
-        try {
-            this.recognition.start();
-        } catch (e) {
-            this.isListening = false;
-            this.elements.btnPtt.classList.remove('listening');
-            this.elements.pttText.textContent = '按住说话';
-            this.elements.pttIcon.textContent = '🎤';
-        }
-    }
-
-    stopListening() {
-        if (!this.isListening) return;
-        this.isListening = false;
-        this.elements.btnPtt.classList.remove('listening');
-        this.elements.pttText.textContent = '按住说话';
-        this.elements.pttIcon.textContent = '🎤';
-        try {
-            this.recognition.stop();
-        } catch (e) {
-            this.cleanupListening();
-        }
-    }
-
-    cleanupListening() {
-        this.isListening = false;
-        this.elements.btnPtt.classList.remove('listening');
-        this.elements.pttText.textContent = '按住说话';
-        this.elements.pttIcon.textContent = '🎤';
-        this.setDebug('stt', '空闲');
-    }
-
     async sendTextMessage() {
         const text = this.elements.textInput.value.trim();
         if (!text || this.isProcessing) return;
@@ -440,11 +483,11 @@ class VisualAssistant {
         };
         utterance.onend = () => {
             this.isSpeaking = false;
-            this.setDebug('stt', '空闲');
+            this.setDebug('stt', this.isVoiceActive ? '聆听中...' : '空闲');
         };
         utterance.onerror = (e) => {
             this.isSpeaking = false;
-            this.setDebug('stt', `TTS: ${e.error}`);
+            this.setDebug('stt', this.isVoiceActive ? '聆听中...' : '空闲');
         };
 
         speechSynthesis.speak(utterance);
