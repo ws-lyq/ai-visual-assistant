@@ -146,7 +146,7 @@ class VisualAssistant {
                 this.elements.btnSend.disabled = false;
             } else {
                 this.setDebug('api', '未配置 Key');
-                this.addSystemMessage('请先在 backend/.env 中配置 DEEPSEEK_API_KEY');
+                this.addSystemMessage('请先在 backend/.env 中配置 AI_API_KEY');
             }
         } catch {
             this.setDebug('api', '未连接');

@@ -4,11 +4,11 @@
 
 ## 特性
 
-- 📷 **实时视觉理解** — AI 能看见摄像头画面中的物体、场景、文字，基于 DeepSeek-VL2 多模态大模型
+- 📷 **实时视觉理解** — AI 能看见摄像头画面中的物体、场景、文字，基于通义千问 Qwen-VL 多模态大模型
 - 🎤 **语音交互** — 按住说话，松手发送；支持文字输入作为备选
 - 🔊 **语音回复** — AI 用自然中文语音回答，按住说话可随时打断
 - 💰 **极低运营成本** — 本地 STT/TTS（免费）+ 按需帧捕获 + 图像压缩，预估月费仅 ¥5.4
-- 🚀 **国内 API** — DeepSeek-VL2 视觉大模型（¥1/百万 tokens），性价比极高
+- 🚀 **国内 API** — 通义千问 Qwen-VL-Plus（¥2/百万 tokens），性价比极高
 
 ## 技术栈
 
@@ -16,7 +16,7 @@
 |------|------|
 | 前端 | 原生 HTML/CSS/JavaScript（无框架依赖） |
 | 后端 | Python FastAPI + httpx + Pillow |
-| 视觉 AI | DeepSeek-VL2 API (OpenAI 兼容格式) |
+| 视觉 AI | 通义千问 Qwen-VL-Plus (DashScope API, OpenAI 兼容) |
 | 语音识别 | 浏览器 Web Speech API（免费，本地处理） |
 | 语音合成 | 浏览器 SpeechSynthesis API（免费，本地处理） |
 | 图像处理 | Pillow（缩放 + JPEG 压缩） |
@@ -43,23 +43,23 @@ ai-visual-assistant/
 
 ### 1. 获取 API Key
 
-在 [platform.deepseek.com](https://platform.deepseek.com) 注册并创建 API Key。
+在 [阿里云百炼平台](https://bailian.console.aliyun.com) 注册并创建 API Key（通义千问 Qwen-VL-Plus）。
 
 ### 2. 配置
 
-在 `backend/` 目录创建 `.env` 文件：
-
-```env
-DEEPSEEK_API_KEY=sk-your_api_key_here
-```
-
-或直接复制模板：
+复制模板并编辑：
 
 ```bash
 copy backend\.env.example backend\.env
 ```
 
-然后编辑 `.env` 填入你的 API Key。
+在 `backend/.env` 中填入你的 API Key：
+
+```env
+AI_API_KEY=sk-your_qwen_api_key_here
+AI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+AI_MODEL=qwen-vl-plus
+```
 
 ### 3. 安装依赖
 
@@ -121,7 +121,7 @@ python main.py
 
 | 项目 | 优化前/月 | 优化后/月 |
 |------|----------|----------|
-| DeepSeek API 调用 | ~¥30 | ~¥5.4 |
+| Qwen-VL API 调用 | ~¥30 | ~¥5.4 |
 | 语音识别 (云 STT) | ~¥90 | **¥0** (Web Speech API) |
 | 语音合成 (云 TTS) | ~¥60 | **¥0** (SpeechSynthesis API) |
 | **总计** | **~¥180** | **~¥5.4** |
