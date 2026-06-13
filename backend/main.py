@@ -35,10 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-static_dir = Path(__file__).resolve().parent.parent / "frontend"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="frontend")
-
 
 class ChatRequest(BaseModel):
     text: str
@@ -154,6 +150,31 @@ async def health():
         "model": DEEPSEEK_MODEL,
         "api_configured": bool(DEEPSEEK_API_KEY),
     }
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str):
+    static_dir = Path(__file__).resolve().parent.parent / "frontend"
+    if full_path == "" or full_path == "/":
+        full_path = "index.html"
+    file_path = static_dir / full_path
+    if file_path.exists() and file_path.is_file():
+        content = file_path.read_bytes()
+        media_type = {
+            ".html": "text/html",
+            ".css": "text/css",
+            ".js": "application/javascript",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".svg": "image/svg+xml",
+            ".ico": "image/x-icon",
+            ".json": "application/json",
+        }.get(file_path.suffix, "application/octet-stream")
+        return HTMLResponse(content=content, media_type=media_type)
+    index_path = static_dir / "index.html"
+    if index_path.exists():
+        return HTMLResponse(content=index_path.read_bytes(), media_type="text/html")
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 if __name__ == "__main__":
