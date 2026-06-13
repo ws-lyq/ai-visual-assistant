@@ -7,7 +7,9 @@ class VisualAssistant {
         this.frameInterval = null;
         this.lastFrameTime = 0;
         this.frameCount = 0;
-        this.lastSentImage = null;
+        this.recognition = null;
+        this.recognizedText = '';
+        this.isSpeaking = false;
 
         this.elements = {
             video: document.getElementById('camera-preview'),
@@ -29,7 +31,59 @@ class VisualAssistant {
         };
 
         this.setupEventListeners();
+        this.initSpeechRecognition();
         this.checkApiHealth();
+    }
+
+    initSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            this.addSystemMessage('您的浏览器不支持语音识别，请使用 Chrome/Edge');
+            this.elements.btnPtt.disabled = true;
+            return;
+        }
+        this.recognition = new SpeechRecognition();
+        this.recognition.lang = 'zh-CN';
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        this.recognition.maxAlternatives = 1;
+
+        this.recognition.onresult = (event) => {
+            let interim = '';
+            let final = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    final += transcript;
+                } else {
+                    interim += transcript;
+                }
+            }
+            if (final) this.recognizedText += final;
+            if (interim) {
+                this.setDebug('stt', `识别中: ${interim}`);
+            }
+        };
+
+        this.recognition.onerror = (event) => {
+            this.setDebug('stt', `错误: ${event.error}`);
+            if (event.error === 'no-speech') return;
+            this.addSystemMessage(`语音识别错误: ${event.error}`);
+            this.cleanupListening();
+        };
+
+        this.recognition.onend = () => {
+            if (this.isListening) {
+                this.cleanupListening();
+                if (this.recognizedText.trim()) {
+                    this.addMessage('user', this.recognizedText);
+                    const image = this.getFrameBase64();
+                    this.sendToAI(this.recognizedText, image);
+                }
+                this.recognizedText = '';
+                this.setDebug('stt', '空闲');
+            }
+        };
     }
 
     setupEventListeners() {
@@ -41,6 +95,19 @@ class VisualAssistant {
         this.elements.btnSend.addEventListener('click', () => this.sendTextMessage());
         this.elements.textInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') this.sendTextMessage();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === ' ' && e.target === document.body && this.isCameraOn) {
+                e.preventDefault();
+                this.startListening();
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            if (e.key === ' ' && this.isListening) {
+                e.preventDefault();
+                this.stopListening();
+            }
         });
     }
 
@@ -218,15 +285,44 @@ class VisualAssistant {
 
     startListening() {
         if (this.isListening || this.isProcessing || !this.isCameraOn) return;
+        if (!this.recognition) {
+            this.addSystemMessage('浏览器不支持语音识别');
+            return;
+        }
+        if (this.isSpeaking) {
+            window.speechSynthesis.cancel();
+            this.isSpeaking = false;
+        }
         this.isListening = true;
+        this.recognizedText = '';
         this.elements.btnPtt.classList.add('listening');
         this.elements.pttText.textContent = '松开结束';
         this.elements.pttIcon.textContent = '🔴';
         this.setDebug('stt', '录音中...');
+        try {
+            this.recognition.start();
+        } catch (e) {
+            this.isListening = false;
+            this.elements.btnPtt.classList.remove('listening');
+            this.elements.pttText.textContent = '按住说话';
+            this.elements.pttIcon.textContent = '🎤';
+        }
     }
 
     stopListening() {
         if (!this.isListening) return;
+        this.isListening = false;
+        this.elements.btnPtt.classList.remove('listening');
+        this.elements.pttText.textContent = '按住说话';
+        this.elements.pttIcon.textContent = '🎤';
+        try {
+            this.recognition.stop();
+        } catch (e) {
+            this.cleanupListening();
+        }
+    }
+
+    cleanupListening() {
         this.isListening = false;
         this.elements.btnPtt.classList.remove('listening');
         this.elements.pttText.textContent = '按住说话';
@@ -286,6 +382,10 @@ class VisualAssistant {
         const voices = speechSynthesis.getVoices();
         const zhVoice = voices.find(v => v.lang.startsWith('zh'));
         if (zhVoice) utterance.voice = zhVoice;
+
+        this.isSpeaking = true;
+        utterance.onend = () => { this.isSpeaking = false; };
+        utterance.onerror = () => { this.isSpeaking = false; };
 
         speechSynthesis.speak(utterance);
     }
