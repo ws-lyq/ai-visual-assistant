@@ -89,7 +89,7 @@ def build_messages(req: ChatRequest) -> list[dict]:
             "2. 只有用户明确问「我在哪」「这是什么」「我旁边有什么」等涉及画面内容的问题时，才根据摄像头画面回答。\n"
             "3. 回答要自然口语化，像朋友聊天一样简短。不要主动提及用户的穿着、姿势、表情、背景。\n"
             "4. 用户说「嗯」「哦」「好的」等简短回应时，简短确认即可，不要展开描述。\n"
-            "5. 结合对话历史理解上下文，不要重复已经说过的内容。"
+            "5. 必须结合对话历史的所有上下文来回答。如果用户之前提到过某件事，之后再次提起时要记得并关联起来。不要重复之前说过的内容，让对话有连贯性。"
         ),
     }
 
@@ -114,7 +114,7 @@ async def chat(req: ChatRequest):
     payload = {
         "model": AI_MODEL,
         "messages": messages,
-        "max_tokens": 300,
+        "max_tokens": 600,
         "temperature": 0.7,
         "stream": True,
     }
