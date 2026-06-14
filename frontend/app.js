@@ -72,21 +72,28 @@ class VisualAssistant {
 
         this.recognition.onresult = (event) => {
             let final = '';
+            let hasMeaningful = false;
             for (let i = event.resultIndex; i < event.results.length; i++) {
-                if (event.results[i].isFinal) {
-                    final += event.results[i][0].transcript;
+                const r = event.results[i];
+                if (r.isFinal) {
+                    const text = r[0].transcript.trim();
+                    const conf = r[0].confidence || 0;
+                    if (conf >= 0.3 && text.length >= 2) {
+                        final += text;
+                        hasMeaningful = true;
+                    }
                 }
             }
-            if (final) {
-                this.accumulatedText += final;
+            if (hasMeaningful) {
+                this.accumulatedText += (this.accumulatedText ? ' ' : '') + final;
                 if (this.isSpeaking) {
                     window.speechSynthesis.cancel();
                     this.isSpeaking = false;
                     this.setPipStatus('聆听中...');
                     this.elements.pipWave.className = '';
                 }
+                this.resetSilenceTimer();
             }
-            this.resetSilenceTimer();
         };
 
         this.recognition.onerror = (event) => {
@@ -287,9 +294,10 @@ class VisualAssistant {
     }
 
     submitVoiceText() {
-        const text = this.accumulatedText.trim();
+        let text = this.accumulatedText.trim();
         this.accumulatedText = '';
-        if (!text || !this.isVoiceActive || !this.inCall || this.isProcessing) return;
+        if (!text || text.length < 2 || !this.isVoiceActive || !this.inCall || this.isProcessing) return;
+        text = text.replace(/(.)\1{4,}/g, '$1$1$1');
         this.sendToAI(text);
     }
 
