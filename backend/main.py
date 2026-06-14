@@ -83,12 +83,13 @@ def build_messages(req: ChatRequest) -> list[dict]:
     system_prompt = {
         "role": "system",
         "content": (
-            "你是AI视觉助手，能通过摄像头看到用户周围的环境。\n"
-            "像朋友一样自然聊天，话要短，别啰嗦。\n"
-            "如果用户没问画面，就正常聊天，别提看到了什么。\n"
-            "如果用户问了画面相关的问题（比如在哪、这是什么），随口回答一下，\n"
-            "然后像朋友聊天一样顺着话头聊下去就行，别生硬地反问。\n"
-            "别评价用户的外貌穿着。用户简短回应时别展开。结合之前聊过的内容，别重复。"
+            "你是AI视觉助手，通过摄像头实时观察用户周围的环境。\n"
+            "核心原则：\n"
+            "1. 用户不问画面，就绝对不提画面。用户打招呼你就正常打招呼，不要描述看到了什么。\n"
+            "2. 只有用户明确问「我在哪」「这是什么」「我旁边有什么」等涉及画面内容的问题时，才根据摄像头画面回答。\n"
+            "3. 回答要自然口语化，像朋友聊天一样简短。不要主动提及用户的穿着、姿势、表情、背景。\n"
+            "4. 用户说「嗯」「哦」「好的」等简短回应时，简短确认即可，不要展开描述。\n"
+            "5. 必须结合对话历史的所有上下文来回答。如果用户之前提到过某件事，之后再次提起时要记得并关联起来。不要重复之前说过的内容，让对话有连贯性。"
         ),
     }
 
@@ -122,44 +123,38 @@ async def chat(req: ChatRequest):
     async def generate():
         full_reply = ""
         try:
-            async with httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_keepalive_connections=0)) as client:
-                for attempt in range(2):
-                    async with client.stream(
-                        "POST",
-                        f"{AI_BASE_URL}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {AI_API_KEY}",
-                            "Content-Type": "application/json",
-                        },
-                        content=body,
-                    ) as resp:
-                        if resp.status_code == 401 and attempt == 0:
-                            logger.warning("AI API 401, retrying once...")
-                            await resp.aclose()
-                            continue
-                        if resp.status_code != 200:
-                            resp_body = await resp.aread()
-                            resp_text = resp_body.decode("utf-8", errors="replace")
-                            logger.error("AI API error: %s %s", resp.status_code, resp_text[:500])
-                            yield f"data: {json.dumps({'error': f'{resp.status_code}: {resp_text[:200]}'})}\n\n"
-                            return
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{AI_BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {AI_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    content=body,
+                ) as resp:
+                    if resp.status_code != 200:
+                        resp_body = await resp.aread()
+                        resp_text = resp_body.decode("utf-8", errors="replace")
+                        logger.error("AI API error: %s %s", resp.status_code, resp_text[:500])
+                        yield f"data: {json.dumps({'error': f'{resp.status_code}: {resp_text[:200]}'})}\n\n"
+                        return
 
-                        async for line in resp.aiter_lines():
-                            if not line or not line.startswith("data: "):
-                                continue
-                            data_str = line[6:]
-                            if data_str == "[DONE]":
-                                break
-                            try:
-                                chunk = json.loads(data_str)
-                                delta = chunk.get("choices", [{}])[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    full_reply += content
-                                    yield f"data: {json.dumps({'content': content})}\n\n"
-                            except (json.JSONDecodeError, KeyError, IndexError):
-                                continue
-                        break  # success, exit retry loop
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_reply += content
+                                yield f"data: {json.dumps({'content': content})}\n\n"
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            continue
         except httpx.RequestError as e:
             logger.error("Network error: %s", e)
             yield f"data: {json.dumps({'error': 'Network error'})}\n\n"
