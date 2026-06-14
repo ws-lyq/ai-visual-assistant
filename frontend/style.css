@@ -90,6 +90,16 @@ body {
     transform: translateY(0);
 }
 
+#lobby-error {
+    margin-top: 16px;
+    padding: 10px 20px;
+    background: rgba(248, 113, 113, 0.15);
+    border: 1px solid rgba(248, 113, 113, 0.4);
+    border-radius: 10px;
+    color: #f87171;
+    font-size: 13px;
+}
+
 .btn-call-icon {
     font-size: 22px;
 }
@@ -105,7 +115,8 @@ body {
 #camera-preview {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+    background: #000;
 }
 
 /* ─── PiP (Picture-in-Picture) ─── */
@@ -174,6 +185,125 @@ body {
     backdrop-filter: blur(4px);
 }
 
+/* ─── Chat Overlay ─── */
+#chat-overlay {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 380px;
+    max-width: 42vw;
+    max-height: 55vh;
+    z-index: 15;
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 55vh;
+    scroll-behavior: smooth;
+}
+
+#chat-messages::-webkit-scrollbar {
+    width: 4px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+}
+
+.chat-msg {
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 1.55;
+    word-break: break-word;
+    animation: msgIn 0.2s ease;
+}
+
+@keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.chat-msg-user {
+    align-self: flex-end;
+    background: rgba(91, 141, 238, 0.2);
+    color: rgba(255, 255, 255, 0.85);
+    max-width: 85%;
+}
+
+.chat-msg-ai {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    max-width: 95%;
+}
+
+.chat-msg-listening {
+    align-self: flex-start;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.35);
+    font-style: italic;
+    font-size: 13px;
+    padding: 4px 12px;
+}
+
+/* ─── Text Input ─── */
+#text-input-area {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#text-input {
+    width: 200px;
+    padding: 8px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+#text-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+#text-input:focus {
+    border-color: rgba(91, 141, 238, 0.6);
+}
+
+#btn-send-text {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 20px;
+    background: rgba(91, 141, 238, 0.5);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#btn-send-text:hover {
+    background: rgba(91, 141, 238, 0.7);
+}
+
 /* ─── Audio Level ─── */
 #audio-level {
     position: absolute;
@@ -218,9 +348,16 @@ body {
     left: 50%;
     transform: translateX(-50%);
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 10;
+}
+
+#btn-row {
+    display: flex;
     gap: 24px;
     align-items: center;
-    z-index: 10;
 }
 
 .ctrl-btn {
@@ -317,10 +454,24 @@ body {
         font-size: 16px;
     }
     #pip {
+        width: 100px;
+        height: 75px;
+        top: 10px;
+        right: 10px;
+    }
+    #chat-overlay {
+        width: 260px;
+        max-width: 70vw;
+        max-height: 45vh;
+        top: 10px;
+        left: 10px;
+    }
+    .chat-msg {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+    #text-input {
         width: 120px;
-        height: 90px;
-        top: 12px;
-        right: 12px;
     }
     .ctrl-btn {
         width: 48px;
@@ -333,6 +484,9 @@ body {
         font-size: 20px;
     }
     #call-controls {
-        gap: 18px;
+        gap: 6px;
+    }
+    #btn-row {
+        gap: 14px;
     }
 }

@@ -1,12 +1,13 @@
 import base64
 import io
+import json
 import logging
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
@@ -40,10 +41,6 @@ class ChatRequest(BaseModel):
     text: str
     image: str | None = None
     conversation_history: list[dict] | None = None
-
-
-class ChatResponse(BaseModel):
-    reply: str
 
 
 def compress_image(base64_str: str) -> str:
@@ -86,10 +83,13 @@ def build_messages(req: ChatRequest) -> list[dict]:
     system_prompt = {
         "role": "system",
         "content": (
-            "你是AI视觉助手，通过摄像头观察用户周围环境并回答问题。"
-            "请基于用户问题和摄像头画面给出简洁准确的回答。"
-            "回答控制在2句话以内，保持自然口语化的中文。"
-            "如果画面中没有人或物体，如实告知即可。"
+            "你是AI视觉助手，通过摄像头实时观察用户周围的环境。\n"
+            "核心原则：\n"
+            "1. 用户不问画面，就绝对不提画面。用户打招呼你就正常打招呼，不要描述看到了什么。\n"
+            "2. 只有用户明确问「我在哪」「这是什么」「我旁边有什么」等涉及画面内容的问题时，才根据摄像头画面回答。\n"
+            "3. 回答要自然口语化，像朋友聊天一样简短。不要主动提及用户的穿着、姿势、表情、背景。\n"
+            "4. 用户说「嗯」「哦」「好的」等简短回应时，简短确认即可，不要展开描述。\n"
+            "5. 结合对话历史理解上下文，不要重复已经说过的内容。"
         ),
     }
 
@@ -104,43 +104,76 @@ def build_messages(req: ChatRequest) -> list[dict]:
     return [system_prompt] + history + [current]
 
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat")
 async def chat(req: ChatRequest):
     if not AI_API_KEY:
         raise HTTPException(status_code=500, detail="AI_API_KEY not configured in .env")
 
     messages = build_messages(req)
+    logger.info("User input (%d chars): %s", len(req.text), req.text[:200])
     payload = {
         "model": AI_MODEL,
         "messages": messages,
         "max_tokens": 300,
         "temperature": 0.7,
+        "stream": True,
     }
+    body = json.dumps(payload).encode("utf-8")
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{AI_BASE_URL}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {AI_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            reply = data["choices"][0]["message"]["content"]
-            logger.info("AI reply (%d chars): %s", len(reply), reply[:100])
-            return ChatResponse(reply=reply)
-    except httpx.HTTPStatusError as e:
-        logger.error("AI API error: %s %s", e.response.status_code, e.response.text)
-        raise HTTPException(status_code=e.response.status_code, detail="AI service error")
-    except httpx.RequestError as e:
-        logger.error("Network error: %s", e)
-        raise HTTPException(status_code=502, detail="AI service unavailable")
-    except Exception as e:
-        logger.error("Unexpected error: %s", e)
-        raise HTTPException(status_code=500, detail="Internal server error")
+    async def generate():
+        full_reply = ""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{AI_BASE_URL}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {AI_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    content=body,
+                ) as resp:
+                    if resp.status_code != 200:
+                        resp_body = await resp.aread()
+                        resp_text = resp_body.decode("utf-8", errors="replace")
+                        logger.error("AI API error: %s %s", resp.status_code, resp_text[:500])
+                        yield f"data: {json.dumps({'error': f'{resp.status_code}: {resp_text[:200]}'})}\n\n"
+                        return
+
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_reply += content
+                                yield f"data: {json.dumps({'content': content})}\n\n"
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            continue
+        except httpx.RequestError as e:
+            logger.error("Network error: %s", e)
+            yield f"data: {json.dumps({'error': 'Network error'})}\n\n"
+        except Exception as e:
+            logger.error("Unexpected error: %s", e)
+            yield f"data: {json.dumps({'error': 'Internal error'})}\n\n"
+        finally:
+            logger.info("AI reply (%d chars): %s", len(full_reply), full_reply[:100])
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/health")
