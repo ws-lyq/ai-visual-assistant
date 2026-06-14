@@ -81,7 +81,6 @@ class VisualAssistant {
         this.recognition.onresult = (event) => {
             let final = '';
             let interim = '';
-            const hasAudio = this.vadEnergy >= 0.06 || !this.audioContext;
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const r = event.results[i];
                 const text = r[0].transcript.trim();
@@ -91,7 +90,7 @@ class VisualAssistant {
                     if (text.length >= 2) interim += text;
                 }
             }
-            if (final && hasAudio) {
+            if (final) {
                 this.accumulatedText += (this.accumulatedText ? ' ' : '') + final;
                 if (this.isSpeaking) {
                     window.speechSynthesis.cancel();
@@ -100,7 +99,7 @@ class VisualAssistant {
                     this.elements.pipWave.className = '';
                 }
                 this.resetSilenceTimer();
-            } else if (interim && hasAudio) {
+            } else if (interim) {
                 this.lastInterim = interim;
                 this.resetSilenceTimer();
             }
@@ -313,15 +312,17 @@ class VisualAssistant {
     async startVAD() {
         try {
             this.vadMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const source = this.audioContext.createMediaStreamSource(this.vadMicStream);
-            this.analyserNode = this.audioContext.createAnalyser();
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            if (ctx.state === 'suspended') await ctx.resume();
+            this.audioContext = ctx;
+            const source = ctx.createMediaStreamSource(this.vadMicStream);
+            this.analyserNode = ctx.createAnalyser();
             this.analyserNode.fftSize = 256;
             source.connect(this.analyserNode);
             this.vadDataArray = new Uint8Array(this.analyserNode.fftSize);
             this.vadLoop();
         } catch (e) {
-            // VAD unavailable, proceed without it
+            // VAD unavailable, proceed without visual bar
         }
     }
 
