@@ -11,6 +11,7 @@ class VisualAssistant {
         this.facingMode = 'user';
 
         this.accumulatedText = '';
+        this.lastInterim = '';
         this.silenceTimer = null;
         this.silenceTimeout = 1500;
 
@@ -72,19 +73,17 @@ class VisualAssistant {
 
         this.recognition.onresult = (event) => {
             let final = '';
-            let hasMeaningful = false;
+            let interim = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const r = event.results[i];
+                const text = r[0].transcript.trim();
                 if (r.isFinal) {
-                    const text = r[0].transcript.trim();
-                    const conf = r[0].confidence || 0;
-                    if (conf >= 0.3 && text.length >= 2) {
-                        final += text;
-                        hasMeaningful = true;
-                    }
+                    if (text.length >= 2) final += text;
+                } else {
+                    if (text.length >= 2) interim += text;
                 }
             }
-            if (hasMeaningful) {
+            if (final) {
                 this.accumulatedText += (this.accumulatedText ? ' ' : '') + final;
                 if (this.isSpeaking) {
                     window.speechSynthesis.cancel();
@@ -92,6 +91,9 @@ class VisualAssistant {
                     this.setPipStatus('聆听中...');
                     this.elements.pipWave.className = '';
                 }
+                this.resetSilenceTimer();
+            } else if (interim) {
+                this.lastInterim = interim;
                 this.resetSilenceTimer();
             }
         };
@@ -252,6 +254,7 @@ class VisualAssistant {
         if (!this.recognition) return;
         this.isVoiceActive = true;
         this.accumulatedText = '';
+        this.lastInterim = '';
         this.setPipStatus('聆听中...');
         this.elements.pipWave.className = '';
         this.elements.audioLevel.style.display = 'block';
@@ -266,6 +269,7 @@ class VisualAssistant {
         this.isVoiceActive = false;
         this.clearSilenceTimer();
         this.accumulatedText = '';
+        this.lastInterim = '';
         this.setPipStatus('麦克风已关闭');
         this.elements.pipWave.className = '';
         this.elements.audioLevel.style.display = 'none';
@@ -294,8 +298,9 @@ class VisualAssistant {
     }
 
     submitVoiceText() {
-        let text = this.accumulatedText.trim();
+        let text = this.accumulatedText.trim() || this.lastInterim.trim();
         this.accumulatedText = '';
+        this.lastInterim = '';
         if (!text || text.length < 2 || !this.isVoiceActive || !this.inCall || this.isProcessing) return;
         text = text.replace(/(.)\1{4,}/g, '$1$1$1');
         this.sendToAI(text);
