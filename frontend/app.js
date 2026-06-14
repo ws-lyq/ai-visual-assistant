@@ -13,7 +13,14 @@ class VisualAssistant {
         this.accumulatedText = '';
         this.lastInterim = '';
         this.silenceTimer = null;
-        this.silenceTimeout = 1500;
+        this.silenceTimeout = 800;
+
+        this.audioContext = null;
+        this.analyserNode = null;
+        this.vadDataArray = null;
+        this.vadFrameId = null;
+        this.vadMicStream = null;
+        this.vadEnergy = 0;
 
         this.timerInterval = null;
         this.timerSeconds = 0;
@@ -74,6 +81,7 @@ class VisualAssistant {
         this.recognition.onresult = (event) => {
             let final = '';
             let interim = '';
+            const hasAudio = this.vadEnergy >= 0.06 || !this.audioContext;
             for (let i = event.resultIndex; i < event.results.length; i++) {
                 const r = event.results[i];
                 const text = r[0].transcript.trim();
@@ -83,7 +91,7 @@ class VisualAssistant {
                     if (text.length >= 2) interim += text;
                 }
             }
-            if (final) {
+            if (final && hasAudio) {
                 this.accumulatedText += (this.accumulatedText ? ' ' : '') + final;
                 if (this.isSpeaking) {
                     window.speechSynthesis.cancel();
@@ -92,7 +100,7 @@ class VisualAssistant {
                     this.elements.pipWave.className = '';
                 }
                 this.resetSilenceTimer();
-            } else if (interim) {
+            } else if (interim && hasAudio) {
                 this.lastInterim = interim;
                 this.resetSilenceTimer();
             }
@@ -149,6 +157,7 @@ class VisualAssistant {
         window.speechSynthesis.cancel();
         this.isSpeaking = false;
         this.stopVoice();
+        this.stopVAD();
         this.stopCamera();
         this.stopTimer();
 
@@ -263,6 +272,7 @@ class VisualAssistant {
         } catch (e) {
             // ignore
         }
+        this.startVAD();
     }
 
     stopVoice() {
@@ -273,6 +283,7 @@ class VisualAssistant {
         this.setPipStatus('麦克风已关闭');
         this.elements.pipWave.className = '';
         this.elements.audioLevel.style.display = 'none';
+        this.stopVAD();
         try {
             this.recognition.stop();
         } catch (e) {
@@ -295,6 +306,57 @@ class VisualAssistant {
             clearTimeout(this.silenceTimer);
             this.silenceTimer = null;
         }
+    }
+
+    // ─── Voice Activity Detection (VAD) ───
+
+    async startVAD() {
+        try {
+            this.vadMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = this.audioContext.createMediaStreamSource(this.vadMicStream);
+            this.analyserNode = this.audioContext.createAnalyser();
+            this.analyserNode.fftSize = 256;
+            source.connect(this.analyserNode);
+            this.vadDataArray = new Uint8Array(this.analyserNode.fftSize);
+            this.vadLoop();
+        } catch (e) {
+            // VAD unavailable, proceed without it
+        }
+    }
+
+    stopVAD() {
+        if (this.vadFrameId) {
+            cancelAnimationFrame(this.vadFrameId);
+            this.vadFrameId = null;
+        }
+        if (this.audioContext) {
+            this.audioContext.close().catch(() => {});
+            this.audioContext = null;
+        }
+        if (this.vadMicStream) {
+            this.vadMicStream.getTracks().forEach(t => t.stop());
+            this.vadMicStream = null;
+        }
+        this.analyserNode = null;
+        this.vadDataArray = null;
+        this.vadEnergy = 0;
+    }
+
+    vadLoop() {
+        if (!this.isVoiceActive || !this.analyserNode || !this.vadDataArray) return;
+        this.analyserNode.getByteTimeDomainData(this.vadDataArray);
+        let sum = 0;
+        for (let i = 0; i < this.vadDataArray.length; i++) {
+            const v = (this.vadDataArray[i] - 128) / 128;
+            sum += v * v;
+        }
+        this.vadEnergy = Math.sqrt(sum / this.vadDataArray.length);
+
+        const pct = Math.min(100, this.vadEnergy * 180);
+        this.elements.audioBar.style.width = pct + '%';
+
+        this.vadFrameId = requestAnimationFrame(() => this.vadLoop());
     }
 
     submitVoiceText() {
