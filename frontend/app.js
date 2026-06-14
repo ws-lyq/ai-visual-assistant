@@ -19,6 +19,7 @@ class VisualAssistant {
         this.analyserNode = null;
         this.vadDataArray = null;
         this.vadFrameId = null;
+        this.vadInterruptStart = 0;
         this.vadMicStream = null;
         this.vadEnergy = 0;
 
@@ -99,7 +100,7 @@ class VisualAssistant {
                     this.elements.pipWave.className = '';
                 }
                 this.resetSilenceTimer();
-            } else if (interim) {
+            } else if (interim && !this.isSpeaking) {
                 this.lastInterim = interim;
                 this.resetSilenceTimer();
             }
@@ -271,7 +272,7 @@ class VisualAssistant {
         } catch (e) {
             // ignore
         }
-        this.startVAD();
+        if (!this.audioContext) this.startVAD();
     }
 
     stopVoice() {
@@ -279,6 +280,7 @@ class VisualAssistant {
         this.clearSilenceTimer();
         this.accumulatedText = '';
         this.lastInterim = '';
+        this.vadInterruptStart = 0;
         this.setPipStatus('麦克风已关闭');
         this.elements.pipWave.className = '';
         this.elements.audioLevel.style.display = 'none';
@@ -357,6 +359,22 @@ class VisualAssistant {
         const pct = Math.min(100, this.vadEnergy * 180);
         this.elements.audioBar.style.width = pct + '%';
 
+        if (this.isSpeaking && this.vadEnergy > 0.12) {
+            if (!this.vadInterruptStart) this.vadInterruptStart = Date.now();
+            if (Date.now() - this.vadInterruptStart > 500) {
+                window.speechSynthesis.cancel();
+                this.isSpeaking = false;
+                this.vadInterruptStart = 0;
+                this.clearSilenceTimer();
+                this.setPipStatus('聆听中...');
+                this.elements.pipWave.className = '';
+                this.elements.audioLevel.style.display = 'block';
+                this.startVoice();
+            }
+        } else {
+            this.vadInterruptStart = 0;
+        }
+
         this.vadFrameId = requestAnimationFrame(() => this.vadLoop());
     }
 
@@ -422,30 +440,27 @@ class VisualAssistant {
         if (this.ttsVoice) utterance.voice = this.ttsVoice;
 
         this.isSpeaking = true;
+        this.clearSilenceTimer();
+        this.accumulatedText = '';
+        this.lastInterim = '';
+        try { this.recognition.stop(); } catch (e) { /**/ }
         this.setPipStatus('正在说话...');
         this.elements.pipWave.className = 'speaking';
         this.elements.audioLevel.style.display = 'none';
 
-        utterance.onend = () => {
+        const onDone = () => {
             this.isSpeaking = false;
             this.elements.pipWave.className = '';
             if (this.isVoiceActive) {
                 this.setPipStatus('聆听中...');
                 this.elements.audioLevel.style.display = 'block';
+                try { this.recognition.start(); } catch (e) { /**/ }
             } else {
                 this.setPipStatus('麦克风已关闭');
             }
         };
-        utterance.onerror = () => {
-            this.isSpeaking = false;
-            this.elements.pipWave.className = '';
-            if (this.isVoiceActive) {
-                this.setPipStatus('聆听中...');
-                this.elements.audioLevel.style.display = 'block';
-            } else {
-                this.setPipStatus('麦克风已关闭');
-            }
-        };
+        utterance.onend = onDone;
+        utterance.onerror = onDone;
 
         speechSynthesis.speak(utterance);
     }
