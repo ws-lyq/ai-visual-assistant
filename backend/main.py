@@ -123,38 +123,44 @@ async def chat(req: ChatRequest):
     async def generate():
         full_reply = ""
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{AI_BASE_URL}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {AI_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    content=body,
-                ) as resp:
-                    if resp.status_code != 200:
-                        resp_body = await resp.aread()
-                        resp_text = resp_body.decode("utf-8", errors="replace")
-                        logger.error("AI API error: %s %s", resp.status_code, resp_text[:500])
-                        yield f"data: {json.dumps({'error': f'{resp.status_code}: {resp_text[:200]}'})}\n\n"
-                        return
+            async with httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_keepalive_connections=0)) as client:
+                for attempt in range(2):
+                    async with client.stream(
+                        "POST",
+                        f"{AI_BASE_URL}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {AI_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        content=body,
+                    ) as resp:
+                        if resp.status_code == 401 and attempt == 0:
+                            logger.warning("AI API 401, retrying once...")
+                            await resp.aclose()
+                            continue
+                        if resp.status_code != 200:
+                            resp_body = await resp.aread()
+                            resp_text = resp_body.decode("utf-8", errors="replace")
+                            logger.error("AI API error: %s %s", resp.status_code, resp_text[:500])
+                            yield f"data: {json.dumps({'error': f'{resp.status_code}: {resp_text[:200]}'})}\n\n"
+                            return
 
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data: "):
-                            continue
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                full_reply += content
-                                yield f"data: {json.dumps({'content': content})}\n\n"
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_reply += content
+                                    yield f"data: {json.dumps({'content': content})}\n\n"
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                        break  # success, exit retry loop
         except httpx.RequestError as e:
             logger.error("Network error: %s", e)
             yield f"data: {json.dumps({'error': 'Network error'})}\n\n"
